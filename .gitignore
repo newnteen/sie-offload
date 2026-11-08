@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+
+# Internal notes — not part of the published demo
+HANDOFF.md
+PUBLISH.md

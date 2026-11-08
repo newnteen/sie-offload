@@ -1,0 +1,52 @@
+diff --git a/client.py b/client.py
+index 4f9c1ab..8d2e771 100644
+--- a/client.py
++++ b/client.py
+@@ -12,9 +12,22 @@ class EmbeddingClient:
+     def __init__(self, base_url: str, api_key: str) -> None:
+         self.base_url = base_url
+         self.api_key = api_key
+ 
+-    def embed(self, texts: list[str]) -> list[list[float]]:
+-        resp = requests.post(f"{self.base_url}/v1/encode", json={"items": texts})
+-        resp.raise_for_status()
+-        return [item["dense"] for item in resp.json()["items"]]
++    def embed(self, texts: list[str], retries: int = 3) -> list[list[float]]:
++        last_error: Exception | None = None
++        for attempt in range(retries):
++            try:
++                resp = requests.post(
++                    f"{self.base_url}/v1/encode",
++                    json={"items": texts},
++                    timeout=30,
++                )
++                resp.raise_for_status()
++                return [item["dense"] for item in resp.json()["items"]]
++            except requests.RequestException as exc:
++                last_error = exc
++                time.sleep(2**attempt)
++        raise RuntimeError("embedding request failed after retries") from last_error
+diff --git a/tests/test_client.py b/tests/test_client.py
+new file mode 100644
+index 0000000..1c4f2a9
+--- /dev/null
++++ b/tests/test_client.py
+@@ -0,0 +1,12 @@
++import pytest
++
++from client import EmbeddingClient
++
++
++def test_embed_retries_on_timeout(monkeypatch):
++    calls = {"n": 0}
++
++    def flaky(*args, **kwargs):
++        calls["n"] += 1
++        if calls["n"] == 1:
++            raise TimeoutError
++        return FakeResponse()
++
++    monkeypatch.setattr(requests, "post", flaky)
++    client = EmbeddingClient("http://localhost", "key")
++    assert client.embed(["hello"])
++    assert calls["n"] == 2
